@@ -131,7 +131,6 @@ class MissionManagerNode(Node):
         dist = abs(dz)
 
         if dist <= 0.1 * abs(self.take_off_altitude):
-            # --- Đã đạt độ cao: khóa position, velocity = 0 ---
             self.target_x = 0.0
             self.target_y = 0.0
             self.target_z = self.take_off_altitude
@@ -144,21 +143,23 @@ class MissionManagerNode(Node):
             self.state = MissionState.MISSION
 
         else:
-            # --- Đang lên cao: velocity-only, vô hiệu hóa position ---
             self.target_x = self.current_x
             self.target_y = self.current_y
             self.target_z = self.current_z
 
             dt = 0.1
-            desired_speed = min(self.max_speed, self.max_speed)  # tốc độ lên thấp, ổn định hơn
+            desired_speed = min(self.max_speed, self.max_speed)  
             self.ramp_speed = min(desired_speed, self.ramp_speed + self.max_accel * dt)
 
             self.target_vx = 0.0
             self.target_vy = 0.0
-            self.target_vz = -self.ramp_speed  # âm vì lên cao (NED convention)
-
+            self.target_vz = -self.ramp_speed  
 
     def handle_mission(self):
+        self.waypoint_tracking()
+
+    #mission
+    def waypoint_tracking(self):
         if self.waypoint_counter >= 3:
             self.state = MissionState.LANDING_SEARCH
             return
@@ -179,7 +180,6 @@ class MissionManagerNode(Node):
             if math.isclose(dist, 0.0, abs_tol=0.7):
                 print(f'\033[92m WAYPOINT {self.waypoint_counter + 1} ARRIVED\033[0m')
 
-                # --- Vừa tới nơi: khóa position tại waypoint trước khi hover ---
                 self.target_x = wx
                 self.target_y = wy
                 self.target_z = wz
@@ -188,7 +188,6 @@ class MissionManagerNode(Node):
                 self.hover()
 
             else:
-                # --- Đang bay: velocity-only, vô hiệu hóa position bằng current ---
                 self.target_x = self.current_x
                 self.target_y = self.current_y
                 self.target_z = self.current_z
@@ -200,7 +199,6 @@ class MissionManagerNode(Node):
                 self.target_vx = self.ramp_speed * dx / dist
                 self.target_vy = self.ramp_speed * dy / dist
                 self.target_vz = self.ramp_speed * dz / dist
-
 
 
     def hover(self):
