@@ -114,7 +114,7 @@ class MissionManagerNode(Node):
             self.state = MissionState.DONE
 
         
-    #mission
+    #state
     def take_off_handle(self):
         self.target_x = 0.0
         self.target_y = 0.0
@@ -127,8 +127,27 @@ class MissionManagerNode(Node):
         if self.current_z <= 0.9 * self.take_off_altitude:
             self.state = MissionState.MISSION 
 
+
+
     def handle_mission(self):
-        self.hover()
+        if self.waypoint_counter >= 3:
+            self.state = MissionState.LANDING_SEARCH
+            return
+
+        if self.time_start_hover !=  0.0:
+            self.hover()
+        else:
+            self.target_x = self.waypoint[3 * self.waypoint_counter]
+            self.target_y = self.waypoint[3 * self.waypoint_counter + 1]
+            self.target_z = self.waypoint[3 * self.waypoint_counter + 2]
+
+            if abs(self.current_x) >= 0.9 * abs(self.target_x) and \
+                abs(self.current_y) >= 0.9 * abs(self.target_y) and \
+                abs(self.current_z) >= 0.9 * abs(self.target_z):
+            
+                self.hover()
+
+
 
     def hover(self):
         if self.time_start_hover == 0.0:
@@ -141,8 +160,7 @@ class MissionManagerNode(Node):
             if self.current_time - self.time_start_hover >= 0.9 * self.hold_count_required \
                 and self.current_z <= 0.9 * self.target_z:
                     self.time_start_hover = 0.0
-                    self.state = MissionState.LANDING_SEARCH
-                    #self.waypoint_counter += 1
+                    self.waypoint_counter += 1
 
 
     #pub
