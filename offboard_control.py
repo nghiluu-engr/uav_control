@@ -122,6 +122,7 @@ class OffboardControlNode(Node):
         self.land_requested = False
         self.land_command_sent = False
 
+    #timer
     def timer_callback(self):
 
         if not self.land_requested:
@@ -150,6 +151,11 @@ class OffboardControlNode(Node):
             print(self.vehicle_nav_state)
 
 
+    #position
+    def target_position_callback(self, msg: PoseStamped):
+        self.target_x = float(msg.pose.position.x)
+        self.target_y = float(msg.pose.position.y)
+        self.target_z = float(msg.pose.position.z)
 
     def local_position_callback(self, msg: VehicleLocalPosition):
         self.local_x = msg.x
@@ -162,6 +168,12 @@ class OffboardControlNode(Node):
         current_position_msg.pose.position.z = self.local_z
         current_position_msg.header.stamp = self.get_clock().now().to_msg()
         self.current_position_pub.publish(current_position_msg)
+
+    #velocity
+    def target_velocity_callback(self, msg: TwistStamped):
+        self.target_vx = float(msg.twist.linear.x)
+        self.target_vy = float(msg.twist.linear.y)
+        self.target_vz = float(msg.twist.linear.z)
 
     def current_velocity_callback(self, msg: VehicleLocalPosition):
         self.current_vx = msg.vx
@@ -176,6 +188,7 @@ class OffboardControlNode(Node):
         self.current_velocity_pub.publish(current_velocity_msg)
 
 
+    #vehicle status & command
     def land_requested_callback(self, msg: Bool):
         if not self.land_requested and msg.data:
             self.land_requested = msg.data
@@ -192,17 +205,6 @@ class OffboardControlNode(Node):
 
         offboard_msg.timestamp = self.get_clock().now().nanoseconds // 1000
         self.offboard_control_mode_pub.publish(offboard_msg)
-
-
-    def target_position_callback(self, msg: PoseStamped):
-        self.target_x = float(msg.pose.position.x)
-        self.target_y = float(msg.pose.position.y)
-        self.target_z = float(msg.pose.position.z)
-
-    def target_velocity_callback(self, msg: TwistStamped):
-        self.target_vx = float(msg.twist.linear.x)
-        self.target_vy = float(msg.twist.linear.y)
-        self.target_vz = float(msg.twist.linear.z)
 
 
     def set_point_pub(self):

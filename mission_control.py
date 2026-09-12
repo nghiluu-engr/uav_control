@@ -10,14 +10,9 @@ from enum import Enum
 class MissionState(Enum):
     WAIT_FOR_POSITION = 0
     TAKE_OFF = 1
-    MISSION  = 2
+    MISSION = 2
     LANDING_SEARCH = 3
     DONE = 4
-
-px4_qos = QoSProfile(reliability = ReliabilityPolicy.BEST_EFFORT,
-                         durability = DurabilityPolicy.TRANSIENT_LOCAL,
-                         history = HistoryPolicy.KEEP_LAST,
-                         depth = 1)
 
 ros_qos = 10
 
