@@ -79,6 +79,7 @@ class OffboardControlNode(Node):
 
 
 
+
     #sub
 
         #position
@@ -110,6 +111,7 @@ class OffboardControlNode(Node):
                                                            self.land_requested_callback,
                                                            ros_qos)
 
+
         self.vehicle_status_sub = self.create_subscription(VehicleStatus,
                                                            '/fmu/out/vehicle_status_v4',
                                                            self.vehicle_status_callback,
@@ -122,6 +124,9 @@ class OffboardControlNode(Node):
         self.land_requested = False
         self.land_command_sent = False
 
+        self.lock_position_requested = False
+        self.lock_position_sent = False
+
     #timer
     def timer_callback(self):
 
@@ -133,13 +138,14 @@ class OffboardControlNode(Node):
         if self.set_point_counter < 10:
             self.set_point_counter += 1
 
+
         if self.set_point_counter == 10 and not self.armed_sent:
             self.take_off()
             self.arm()
             self.armed_sent = True
             print('arming.......')
             print('take off.........')
-            
+    
 
         if self.land_requested and not self.land_command_sent:
             self.land()
@@ -215,11 +221,12 @@ class OffboardControlNode(Node):
         self.target_position_pub.publish(set_point_msg)
 
 
-    def vehicle_command_callback(self, msg, command, param1 = 0.0, param2 = 0.0):
+    def vehicle_command_callback(self, msg, command, param1 = 0.0, param2 = 0.0, param3 = 0.0):
         command_msg = msg
         command_msg.command = command
         command_msg.param1 = param1
         command_msg.param2 = param2
+        command_msg.param3 = param3
 
         command_msg.target_system = 1
         command_msg.target_component = 1
@@ -249,7 +256,7 @@ class OffboardControlNode(Node):
         self.vehicle_command_callback(VehicleCommand(), 
                                         VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 
                                         param1 = 1.0, 
-                                        param2 = 6.0)
+                                        param2 = 6.0)    
 
     def land(self):
         self.vehicle_command_callback(VehicleCommand(), 
