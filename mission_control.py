@@ -5,6 +5,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from geometry_msgs.msg import PoseStamped, TwistStamped
 from std_msgs.msg import Bool
+from nav_msgs.msg import Odometry
 from enum import Enum
 import math
 
@@ -65,6 +66,10 @@ class MissionManagerNode(Node):
         self.max_accel = 0.5
         self.ramp_speed = 0.0
 
+        self.descend_altitude = -1.0      # còn 1m (NED: càng gần 0 = càng thấp)
+        self.original_wz = 0.0            # lưu độ cao gốc của waypoint để lên lại
+        self.altitude_seq = 0             # 0=idle, 1=descending, 2=hovering, 3=ascending
+
         #timer
         self.timer = self.create_timer(0.1, self.timer_callback)
 
@@ -86,6 +91,7 @@ class MissionManagerNode(Node):
         self.lock_position_pub = self.create_publisher(Bool,
                                                         '/mission/lock_position',
                                                         ros_qos)
+
 
         #sub
         self.current_position_sub = self.create_subscription(PoseStamped,
@@ -148,8 +154,7 @@ class MissionManagerNode(Node):
             self.target_z = self.current_z
 
             dt = 0.1
-            desired_speed = min(self.max_speed, self.max_speed)  
-            self.ramp_speed = min(desired_speed, self.ramp_speed + self.max_accel * dt)
+            self.ramp_speed = min(self.max_speed, self.ramp_speed + self.max_accel * dt)
 
             self.target_vx = 0.0
             self.target_vy = 0.0
@@ -167,6 +172,9 @@ class MissionManagerNode(Node):
         elif self.time_start_hover != 0.0:
             self.hover()
 
+        elif self.altitude_seq != 0.0:
+            self.mission_at_waypoint()
+
         else:
             wx = self.waypoint[3 * self.waypoint_counter]
             wy = self.waypoint[3 * self.waypoint_counter + 1]
@@ -183,9 +191,12 @@ class MissionManagerNode(Node):
                 self.target_x = wx
                 self.target_y = wy
                 self.target_z = wz
-                self.ramp_speed = 0.0   # reset ramp cho lần bay tiếp theo
 
-                self.hover()
+                self.original_wz = wz          # lưu lại độ cao gốc để lên lại sau
+                self.ramp_speed = 0.0
+                self.altitude_seq = 1          # bắt đầu chuỗi hạ độ cao
+
+                self.mission_at_waypoint()
 
             else:
                 self.target_x = self.current_x
@@ -214,8 +225,10 @@ class MissionManagerNode(Node):
             print(f'\033[94m current time: \033[0m', self.current_time)
 
             if self.current_time - self.time_start_hover >= 0.9 * self.hold_count_required:
-                self.time_start_hover = 0.0                  
-                self.waypoint_counter += 1
+                self.time_start_hover = 0.0   
+                self.ramp_speed = 0.0
+                self.altitude_seq = 3            
+                
 
 
     def velocity_control(self):
@@ -234,6 +247,70 @@ class MissionManagerNode(Node):
             if self.target_vz < 0.0 or self.target_z < 0.0:
                 self.current_vz = - self.max_speed
             else: self.current_vz = self.max_speed
+
+    def mission_at_waypoint(self):
+        dt = 0.1
+
+        # --- Bước 1: hạ xuống còn 1m ---
+        if self.altitude_seq == 1:
+            dz = self.descend_altitude - self.current_z
+            dist = abs(dz)
+
+            if math.isclose(dist, 0.0, abs_tol=0.2):
+                self.target_x = self.current_x
+                self.target_y = self.current_y
+                self.target_z = self.descend_altitude
+                self.target_vx = 0.0
+                self.target_vy = 0.0
+                self.target_vz = 0.0
+                self.ramp_speed = 0.0
+                self.time_start_hover = 0.0
+                self.altitude_seq = 2
+                print('\033[38;5;42m Đã tới 1m, bắt đầu hover \033[0m')
+            else:
+                self.target_x = self.current_x
+                self.target_y = self.current_y
+                self.target_z = self.current_z
+                self.ramp_speed = min(self.max_speed, self.ramp_speed + self.max_accel * dt)
+                self.target_vx = 0.0
+                self.target_vy = 0.0
+                self.target_vz = self.ramp_speed * dz / dist
+                print('\033[38;2;128;0;128m Đang hạ độ cao xuống 1m... \033[0m')
+
+        # --- Bước 2: hover 5s tại 1m ---
+        elif self.altitude_seq == 2:
+            self.target_vx = 0.0
+            self.target_vy = 0.0
+            self.target_vz = 0.0
+
+            self.hover()
+
+        # --- Bước 3: lên lại độ cao gốc của waypoint ---
+        elif self.altitude_seq == 3:
+            dz = self.original_wz - self.current_z
+            dist = abs(dz)
+
+            if math.isclose(dist, 0.0, abs_tol=0.2):
+                self.target_x = self.current_x
+                self.target_y = self.current_y
+                self.target_z = self.original_wz
+                self.target_vx = 0.0
+                self.target_vy = 0.0
+                self.target_vz = 0.0
+                self.ramp_speed = 0.0
+                self.waypoint_counter += 1   # xong hẳn chuỗi, mới sang waypoint kế
+                self.altitude_seq = 0
+                print(f'\033[92m Đã lên lại độ cao gốc, chuyển waypoint tiếp theo \033[0m')
+            else:
+                self.target_x = self.current_x
+                self.target_y = self.current_y
+                self.target_z = self.current_z
+                self.ramp_speed = min(self.max_speed, self.ramp_speed + self.max_accel * dt)
+                self.target_vx = 0.0
+                self.target_vy = 0.0
+                self.target_vz = self.ramp_speed * dz / dist
+                print('\033[38;2;128;0;135m Đang lên lại độ cao waypoint... \033[0m')    
+
 
     #pub
     def target_position_publisher(self, x, y, z):
