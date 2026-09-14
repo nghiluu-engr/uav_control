@@ -5,7 +5,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from geometry_msgs.msg import PoseStamped, TwistStamped
 from std_msgs.msg import Bool
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import Path
 from enum import Enum
 import math
 
@@ -70,6 +70,9 @@ class MissionManagerNode(Node):
         self.original_wz = 0.0            # lưu độ cao gốc của waypoint để lên lại
         self.altitude_seq = 0             # 0=idle, 1=descending, 2=hovering, 3=ascending
 
+        self.drone_path = Path()
+        self.drone_path.header.frame_id = 'map'
+
         #timer
         self.timer = self.create_timer(0.1, self.timer_callback)
 
@@ -92,6 +95,10 @@ class MissionManagerNode(Node):
                                                         '/mission/lock_position',
                                                         ros_qos)
 
+        #visualize
+        self.position_visualize_pub = self.create_publisher(Path,
+                                                            'mission/position_visualize',
+                                                            ros_qos)
 
         #sub
         self.current_position_sub = self.create_subscription(PoseStamped,
@@ -106,18 +113,21 @@ class MissionManagerNode(Node):
 
     #main
     def timer_callback(self):
+        self.position_visualize_publisher(self.current_x, self.current_y, self.current_z)
+        print(f'current position: x: {self.current_x}, y: {self.current_y}, z: {self.current_z}')
+        print(f'current velocity: x: {self.current_vx}, y: {self.current_vy}, z: {self.current_vz}')
         if self.state != MissionState.LANDING_SEARCH:
             self.target_position_publisher(self.target_x, self.target_y, self.target_z)
             print(f'target position: x: {self.target_x}, y: {self.target_y}, z: {self.target_z}')
-            print(f'current position: x: {self.current_x}, y: {self.current_y}, z: {self.current_z}')
 
             self.velocity_control()
 
             self.target_velocity_publisher(self.target_vx, self.target_vy, self.target_vz)
             print(f'target velocity: vx: {self.target_vx}, vy: {self.target_vy}, vz: {self.target_vz}')
-            print(f'current velocity: x: {self.current_vx}, y: {self.current_vy}, z: {self.current_vz}')
+            
 
         if self.state == MissionState.WAIT_FOR_POSITION:
+            self.drone_path.poses.clear()
             self.state = MissionState.TAKE_OFF
 
         if self.state == MissionState.TAKE_OFF:
@@ -338,6 +348,18 @@ class MissionManagerNode(Node):
         lock_position_msg = Bool()
         lock_position_msg.data = lock_position_state
         self.lock_position_pub.publish(lock_position_msg)
+
+    def position_visualize_publisher(self, x, y, z):
+        position_visualize_msg = PoseStamped()
+        position_visualize_msg.header.frame_id = 'map'
+        position_visualize_msg.pose.position.x = y
+        position_visualize_msg.pose.position.y = x
+        position_visualize_msg.pose.position.z = -z
+        position_visualize_msg.header.stamp = self.get_clock().now().to_msg()
+
+        self.drone_path.header.stamp = position_visualize_msg.header.stamp
+        self.drone_path.poses.append(position_visualize_msg)
+        self.position_visualize_pub.publish(self.drone_path)
 
 
     #sub

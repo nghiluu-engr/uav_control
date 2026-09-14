@@ -23,7 +23,7 @@ class OffboardControlNode(Node):
         #parameter
         self.declare_parameter("default_target_x", 0.0)
         self.declare_parameter("default_target_y", 0.0)
-        self.declare_parameter("default_target_z", -5.0)
+        self.declare_parameter("default_target_z", 0.0)
 
         #value
         self.default_target_x = float(self.get_parameter('default_target_x').value)
