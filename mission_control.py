@@ -62,7 +62,7 @@ class MissionManagerNode(Node):
 
         self.waypoint_counter = 0
 
-        self.max_speed = 1.0
+        self.max_speed = 3.0
         self.max_accel = 0.5
         self.ramp_speed = 0.0
 
@@ -71,7 +71,10 @@ class MissionManagerNode(Node):
         self.altitude_seq = 0             # 0=idle, 1=descending, 2=hovering, 3=ascending
 
         self.drone_path = Path()
+        self.drone_path.poses.clear()
         self.drone_path.header.frame_id = 'map'
+
+        self.current_position_received = False
 
         #timer
         self.timer = self.create_timer(0.1, self.timer_callback)
@@ -113,7 +116,9 @@ class MissionManagerNode(Node):
 
     #main
     def timer_callback(self):
-        self.position_visualize_publisher(self.current_x, self.current_y, self.current_z)
+        if self.current_position_received:
+            self.position_visualize_publisher(self.current_x, self.current_y, self.current_z)
+
         print(f'current position: x: {self.current_x}, y: {self.current_y}, z: {self.current_z}')
         print(f'current velocity: x: {self.current_vx}, y: {self.current_vy}, z: {self.current_vz}')
         if self.state != MissionState.LANDING_SEARCH:
@@ -127,7 +132,6 @@ class MissionManagerNode(Node):
             
 
         if self.state == MissionState.WAIT_FOR_POSITION:
-            self.drone_path.poses.clear()
             self.state = MissionState.TAKE_OFF
 
         if self.state == MissionState.TAKE_OFF:
@@ -367,6 +371,7 @@ class MissionManagerNode(Node):
         self.current_x = msg.pose.position.x
         self.current_y = msg.pose.position.y
         self.current_z = msg.pose.position.z
+        self.current_position_received = True
         
 
     def current_velocity_callback(self, msg: TwistStamped):
