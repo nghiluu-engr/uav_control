@@ -66,8 +66,8 @@ class MissionManagerNode(Node):
         self.max_accel = 0.5
         self.ramp_speed = 0.0
 
-        self.descend_altitude = -1.0      # còn 1m (NED: càng gần 0 = càng thấp)
-        self.original_wz = 0.0            # lưu độ cao gốc của waypoint để lên lại
+        self.descend_altitude = -1.0     
+        self.original_wz = 0.0            
         self.altitude_seq = 0             # 0=idle, 1=descending, 2=hovering, 3=ascending
 
         self.drone_path = Path()
@@ -75,6 +75,7 @@ class MissionManagerNode(Node):
         self.drone_path.header.frame_id = 'map'
 
         self.current_position_received = False
+        self.finish_hovering = False
 
         #timer
         self.timer = self.create_timer(0.1, self.timer_callback)
@@ -94,9 +95,9 @@ class MissionManagerNode(Node):
                                             '/mission/land',
                                             ros_qos)
 
-        self.lock_position_pub = self.create_publisher(Bool,
-                                                        '/mission/lock_position',
-                                                        ros_qos)
+        self.rtl_pub = self.create_publisher(Bool,
+                                            '/mission/return_to_home',
+                                            ros_qos)
 
         #visualize
         self.position_visualize_pub = self.create_publisher(Path,
@@ -121,14 +122,14 @@ class MissionManagerNode(Node):
 
         print(f'current position: x: {self.current_x}, y: {self.current_y}, z: {self.current_z}')
         print(f'current velocity: x: {self.current_vx}, y: {self.current_vy}, z: {self.current_vz}')
-        if self.state != MissionState.LANDING_SEARCH:
-            self.target_position_publisher(self.target_x, self.target_y, self.target_z)
-            print(f'target position: x: {self.target_x}, y: {self.target_y}, z: {self.target_z}')
+        
+        self.target_position_publisher(self.target_x, self.target_y, self.target_z)
+        print(f'target position: x: {self.target_x}, y: {self.target_y}, z: {self.target_z}')
 
-            self.velocity_control()
+        self.velocity_control()
 
-            self.target_velocity_publisher(self.target_vx, self.target_vy, self.target_vz)
-            print(f'target velocity: vx: {self.target_vx}, vy: {self.target_vy}, vz: {self.target_vz}')
+        self.target_velocity_publisher(self.target_vx, self.target_vy, self.target_vz)
+        print(f'target velocity: vx: {self.target_vx}, vy: {self.target_vy}, vz: {self.target_vz}')
             
 
         if self.state == MissionState.WAIT_FOR_POSITION:
@@ -141,8 +142,11 @@ class MissionManagerNode(Node):
             self.handle_mission()
 
         if self.state == MissionState.LANDING_SEARCH:
-            self.land_publisher(True)
-            self.state = MissionState.DONE
+            self.hover()
+            if self.finish_hovering:
+                self.rtl_publisher(True)
+                self.state = MissionState.DONE
+    
 
         
     #state
@@ -181,12 +185,13 @@ class MissionManagerNode(Node):
     def waypoint_tracking(self):
         if self.waypoint_counter >= 3:
             self.state = MissionState.LANDING_SEARCH
+            self.finish_hovering = False
             return
 
         elif self.time_start_hover != 0.0:
             self.hover()
 
-        elif self.altitude_seq != 0.0:
+        elif self.altitude_seq != 0:
             self.mission_at_waypoint()
 
         else:
@@ -241,7 +246,8 @@ class MissionManagerNode(Node):
             if self.current_time - self.time_start_hover >= 0.9 * self.hold_count_required:
                 self.time_start_hover = 0.0   
                 self.ramp_speed = 0.0
-                self.altitude_seq = 3            
+                self.altitude_seq = 3    
+                self.finish_hovering = True        
                 
 
 
@@ -348,10 +354,10 @@ class MissionManagerNode(Node):
         land_msg.data = landing_state
         self.land_pub.publish(land_msg)
 
-    def lock_position_publisher(self, lock_position_state: Bool):
-        lock_position_msg = Bool()
-        lock_position_msg.data = lock_position_state
-        self.lock_position_pub.publish(lock_position_msg)
+    def rtl_publisher(self, rtl_state: Bool):
+        rtl_msg = Bool()
+        rtl_msg.data = rtl_state
+        self.rtl_pub.publish(rtl_msg)
 
     def position_visualize_publisher(self, x, y, z):
         position_visualize_msg = PoseStamped()

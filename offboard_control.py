@@ -111,6 +111,11 @@ class OffboardControlNode(Node):
                                                            self.land_requested_callback,
                                                            ros_qos)
 
+        self.rtl_requested_sub = self.create_subscription(Bool,
+                                                           '/mission/return_to_home',
+                                                           self.rtl_requested_callback,
+                                                           ros_qos)
+
 
         self.vehicle_status_sub = self.create_subscription(VehicleStatus,
                                                            '/fmu/out/vehicle_status_v4',
@@ -127,13 +132,18 @@ class OffboardControlNode(Node):
         self.lock_position_requested = False
         self.lock_position_sent = False
 
+        self.rtl_requested = False
+        self.rtl_command_sent = False
+
     #timer
     def timer_callback(self):
 
-        if not self.land_requested:
+        if not self.land_requested and not self.rtl_requested:
             self.land_command_sent = False
+            self.rtl_command_sent = False
             self.offboard_control_callback()
             self.set_point_pub()
+
         
         if self.set_point_counter < 10:
             self.set_point_counter += 1
@@ -154,6 +164,16 @@ class OffboardControlNode(Node):
                 print('landing......')
             else:
                 print('trying to land......')
+            print(self.vehicle_nav_state)
+
+
+        if self.rtl_requested and not self.rtl_command_sent:
+            self.return_to_home()
+            if self.vehicle_nav_state == 5:
+                self.rtl_command_sent = True
+                print('return to home......')
+            else:
+                print('trying to return to home......')
             print(self.vehicle_nav_state)
 
 
@@ -198,6 +218,10 @@ class OffboardControlNode(Node):
     def land_requested_callback(self, msg: Bool):
         if not self.land_requested and msg.data:
             self.land_requested = msg.data
+
+    def rtl_requested_callback(self, msg: Bool):
+        if not self.rtl_requested and msg.data:
+            self.rtl_requested = msg.data
 
     def offboard_control_callback(self):
         offboard_msg = OffboardControlMode()
