@@ -75,7 +75,7 @@ class MissionManagerNode(Node):
         self.drone_path.header.frame_id = 'map'
 
         self.current_position_received = False
-        self.finish_hovering = False
+        self.ready_to_rtl = False
 
         #timer
         self.timer = self.create_timer(0.1, self.timer_callback)
@@ -143,7 +143,7 @@ class MissionManagerNode(Node):
 
         if self.state == MissionState.LANDING_SEARCH:
             self.hover()
-            if self.finish_hovering:
+            if self.ready_to_rtl:
                 self.rtl_publisher(True)
                 self.state = MissionState.DONE
     
@@ -185,7 +185,7 @@ class MissionManagerNode(Node):
     def waypoint_tracking(self):
         if self.waypoint_counter >= 3:
             self.state = MissionState.LANDING_SEARCH
-            self.finish_hovering = False
+            self.ready_to_rtl = False
             return
 
         elif self.time_start_hover != 0.0:
@@ -247,7 +247,7 @@ class MissionManagerNode(Node):
                 self.time_start_hover = 0.0   
                 self.ramp_speed = 0.0
                 self.altitude_seq = 3    
-                self.finish_hovering = True        
+                self.ready_to_rtl = True        
                 
 
 
