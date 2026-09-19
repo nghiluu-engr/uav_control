@@ -77,6 +77,8 @@ class MissionManagerNode(Node):
         self.current_position_received = False
         self.ready_to_rtl = False
 
+        self.servo_trigger_requested = False
+
         #timer
         self.timer = self.create_timer(0.1, self.timer_callback)
 
@@ -97,6 +99,10 @@ class MissionManagerNode(Node):
 
         self.rtl_pub = self.create_publisher(Bool,
                                             '/mission/return_to_home',
+                                            ros_qos)
+
+        self.servo_trigger_pub = self.create_publisher(Bool,
+                                            '/mission/servo_trigger',
                                             ros_qos)
 
         #visualize
@@ -147,7 +153,6 @@ class MissionManagerNode(Node):
                 self.rtl_publisher(True)
                 self.state = MissionState.DONE
     
-
         
     #state
     def take_off_handle(self):
@@ -250,7 +255,6 @@ class MissionManagerNode(Node):
                 self.ready_to_rtl = True        
                 
 
-
     def velocity_control(self):
         if abs(self.current_vx) > self.max_speed or \
             abs(self.current_vy) > self.max_speed or \
@@ -303,10 +307,18 @@ class MissionManagerNode(Node):
             self.target_vy = 0.0
             self.target_vz = 0.0
 
+            if not self.servo_trigger_requested:
+                self.servo_trigger_publisher(True)
+                self.servo_trigger_requested = True
+
             self.hover()
 
         # --- Bước 3: lên lại độ cao gốc của waypoint ---
         elif self.altitude_seq == 3:
+            if self.servo_trigger_requested:
+                self.servo_trigger_publisher(False)
+                self.servo_trigger_requested = False
+
             dz = self.original_wz - self.current_z
             dist = abs(dz)
 
@@ -358,6 +370,12 @@ class MissionManagerNode(Node):
         rtl_msg = Bool()
         rtl_msg.data = rtl_state
         self.rtl_pub.publish(rtl_msg)
+
+    def servo_trigger_publisher(self, servo_trigger_state: Bool):
+        servo_trigger_msg = Bool()
+        servo_trigger_msg.data = servo_trigger_state
+        self.servo_trigger_pub.publish(servo_trigger_msg)
+        
 
     def position_visualize_publisher(self, x, y, z):
         position_visualize_msg = PoseStamped()
