@@ -308,10 +308,11 @@ class MissionManagerNode(Node):
             self.target_vz = 0.0
 
             if not self.servo_trigger_requested:
+                print('\033[48;2;128;0;135m pub servo trigger \033[0m')  
                 self.servo_trigger_publisher(True)
                 self.servo_trigger_requested = True
 
-            self.hover()
+                self.hover()
 
         # --- Bước 3: lên lại độ cao gốc của waypoint ---
         elif self.altitude_seq == 3:
@@ -375,6 +376,8 @@ class MissionManagerNode(Node):
         servo_trigger_msg = Bool()
         servo_trigger_msg.data = servo_trigger_state
         self.servo_trigger_pub.publish(servo_trigger_msg)
+        
+        
         
 
     def position_visualize_publisher(self, x, y, z):

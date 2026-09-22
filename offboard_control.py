@@ -118,7 +118,7 @@ class OffboardControlNode(Node):
 
 
         self.vehicle_status_sub = self.create_subscription(VehicleStatus,
-                                                           '/fmu/out/vehicle_status_v4',
+                                                           '/fmu/out/vehicle_status_v1',
                                                            self.vehicle_status_callback,
                                                            px4_qos)
 
