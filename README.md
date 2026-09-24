@@ -1,4 +1,4 @@
-# 🛸 uav_control - Autonomous Drone Waypoint & Servo Mission
+# uav_control - Autonomous Drone Waypoint & Servo Mission
 
 An integrated ROS 2 package for autonomous UAV offboard control, multi-waypoint navigation, and dual-servo payload mechanism actuation using **PX4 Autopilot** and **QGroundControl**.
 
@@ -58,9 +58,3 @@ Before building and running this repository, make sure your environment is prope
 * **Gia Nghi Luu** - *Electronics & Telecommunications Engineering Student*
 * GitHub: [@nghiluu-engr](https://github.com/nghiluu-engr)
 * LinkedIn: [Gia Nghi Lưu](https://www.linkedin.com/in/gia-nghi-l%C6%B0u-65b166223/)
-
----
-
-## 📜 License
-
-This project is open-source and available under the [MIT License](LICENSE).
