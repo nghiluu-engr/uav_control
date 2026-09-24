@@ -32,7 +32,7 @@ The automated flight pipeline executes the following sequence:
 
 ```text
 uav_control/
-├── test_servo/           # Standalone scripts to test & calibrate servos prior to onboard deployment
+├── test_servo/           # Firmware & test scripts for Arduino Nano to test & calibrate servos
 ├── mission_control.py    # High-level state machine; orchestrates offboard & servo nodes
 ├── offboard_control.py   # Receives movement commands from mission_control and executes PX4 Offboard control
 ├── servo_control.py      # Receives servo commands from mission_control and controls physical servos
