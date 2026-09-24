@@ -50,20 +50,6 @@ Before building and running this repository, make sure your environment is prope
 
 ---
 
-## 📂 Repository Structure
-
-```text
-uav_control/
-├── config/             # Configuration files (parameters, YAMLs)
-├── launch/             # ROS 2 launch files
-├── include/uav_control/ # C++ header files
-├── src/                # Source code (nodes, controllers)
-├── CMakeLists.txt      # Build configuration
-└── package.xml         # Package dependencies and metadata
-```
-
----
-
 ## 👤 Author
 
 * **Gia Nghi Luu** - *Electronics & Telecommunications Engineering Student*
