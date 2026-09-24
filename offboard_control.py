@@ -47,6 +47,7 @@ class OffboardControlNode(Node):
         self.current_vz = 0.0
 
         self.vehicle_nav_state = None
+        self.vehicle_arming_state = None
 
         #timer
         self.timer = self.create_timer(0.1, self.timer_callback)
@@ -118,7 +119,7 @@ class OffboardControlNode(Node):
 
 
         self.vehicle_status_sub = self.create_subscription(VehicleStatus,
-                                                           '/fmu/out/vehicle_status_v1',
+                                                           '/fmu/out/vehicle_status_v4',
                                                            self.vehicle_status_callback,
                                                            px4_qos)
 
@@ -157,22 +158,24 @@ class OffboardControlNode(Node):
             print('take off.........')
     
 
-        if self.land_requested and not self.land_command_sent:
+        if self.land_requested and not self.land_command_sent and self.vehicle_arming_state != 1:
             self.land()
             if self.vehicle_nav_state == 18:
                 self.land_command_sent = True
                 print('landing......')
             else:
+                self.land_command_sent = False
                 print('trying to land......')
             print(self.vehicle_nav_state)
 
 
-        if self.rtl_requested and not self.rtl_command_sent:
+        if self.rtl_requested and not self.rtl_command_sent and self.vehicle_arming_state != 1:
             self.return_to_home()
             if self.vehicle_nav_state == 5:
                 self.rtl_command_sent = True
                 print('return to home......')
             else:
+                self.rtl_command_sent = False
                 print('trying to return to home......')
             print(self.vehicle_nav_state)
 
@@ -264,6 +267,7 @@ class OffboardControlNode(Node):
 
     def vehicle_status_callback(self, msg: VehicleStatus):
         self.vehicle_nav_state = msg.nav_state
+        self.vehicle_arming_state = msg.arming_state
 
 
     def arm(self):

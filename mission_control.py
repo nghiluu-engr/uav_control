@@ -9,6 +9,8 @@ from nav_msgs.msg import Path
 from enum import Enum
 import math
 
+from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue #health check
+
 class MissionState(Enum):
     WAIT_FOR_POSITION = 0
     TAKE_OFF = 1
@@ -110,6 +112,11 @@ class MissionManagerNode(Node):
                                                             'mission/position_visualize',
                                                             ros_qos)
 
+        #diagnostics
+        self.diagnostics_pub = self.create_publisher(DiagnosticArray,
+                                                     '/diagnostics',
+                                                     ros_qos)
+
         #sub
         self.current_position_sub = self.create_subscription(PoseStamped,
                                                             '/mission/current_position',
@@ -123,6 +130,8 @@ class MissionManagerNode(Node):
 
     #main
     def timer_callback(self):
+        self.publish_health()
+
         if self.current_position_received:
             self.position_visualize_publisher(self.current_x, self.current_y, self.current_z)
 
@@ -377,9 +386,6 @@ class MissionManagerNode(Node):
         servo_trigger_msg.data = servo_trigger_state
         self.servo_trigger_pub.publish(servo_trigger_msg)
         
-        
-        
-
     def position_visualize_publisher(self, x, y, z):
         position_visualize_msg = PoseStamped()
         position_visualize_msg.header.frame_id = 'map'
@@ -392,6 +398,39 @@ class MissionManagerNode(Node):
         self.drone_path.poses.append(position_visualize_msg)
         self.position_visualize_pub.publish(self.drone_path)
 
+    #diagnostics
+    def publish_health(self):
+
+        diagnostic_msg = DiagnosticArray()
+        diagnostic_msg.header.stamp = self.get_clock().now().to_msg()
+
+        status = DiagnosticStatus()
+        status.name = 'MissionManagerNode'
+
+        if self.current_position_received:
+            status.level = DiagnosticStatus.OK
+            status.message = 'Node is running normally'
+        else:
+            status.level = DiagnosticStatus.WARN
+            status.message = 'Waiting for current position'
+
+        status.values.append(
+            KeyValue(
+                key='mission_state',
+                value=self.state.name
+            )
+        )
+
+        status.values.append(
+            KeyValue(
+                key='position_received',
+                value=str(self.current_position_received)
+            )
+        )
+
+        diagnostic_msg.status.append(status)
+
+        self.diagnostics_pub.publish(diagnostic_msg)
 
     #sub
     def current_position_callback(self, msg: PoseStamped):
