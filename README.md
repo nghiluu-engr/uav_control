@@ -38,6 +38,8 @@ uav_control/
 ├── servo_control.py      # Receives servo commands from mission_control and controls physical servos
 └── README.md             # Repository documentation
 
+---
+
 ## 🛠️ Prerequisites & Setup Guides
 
 Before building and running this repository, make sure your environment is properly configured. Detailed step-by-step setup guides are available below:
