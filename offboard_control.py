@@ -6,7 +6,8 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 from px4_msgs.msg import (VehicleStatus, VehicleCommand, 
                           OffboardControlMode, VehicleLocalPosition, TrajectorySetpoint)
 from geometry_msgs.msg import PoseStamped, TwistStamped
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Float32
+import math
 
 px4_qos = QoSProfile(reliability = ReliabilityPolicy.BEST_EFFORT,
                          durability = DurabilityPolicy.TRANSIENT_LOCAL,
@@ -33,6 +34,8 @@ class OffboardControlNode(Node):
         self.target_x = self.default_target_x
         self.target_y = self.default_target_y
         self.target_z = self.default_target_z
+
+        self.target_yaw = 0.0
 
         self.local_x = 0
         self.local_y = 0
@@ -72,6 +75,11 @@ class OffboardControlNode(Node):
                                                           '/mission/current_velocity',
                                                           ros_qos)
 
+        #yaw
+        self.current_yaw_pub = self.create_publisher(Float32,
+                                                     '/mission/current_yaw',
+                                                     ros_qos)
+
         #vehicle command
         self.vehicle_command_pub = self.create_publisher(VehicleCommand,
                                                          '/fmu/in/vehicle_command',
@@ -104,6 +112,12 @@ class OffboardControlNode(Node):
                                                            '/fmu/out/vehicle_local_position_v1',
                                                            self.current_velocity_callback,
                                                            px4_qos)
+
+        #yaw
+        self.target_yaw_sub = self.create_subscription(Float32,
+                                                       '/mission/target_yaw',
+                                                       self.target_yaw_callback,
+                                                       ros_qos)
 
         
         #vehicle status
@@ -190,6 +204,7 @@ class OffboardControlNode(Node):
         self.local_x = msg.x
         self.local_y = msg.y
         self.local_z = msg.z
+        self.current_yaw = msg.heading
 
         current_position_msg = PoseStamped()
         current_position_msg.pose.position.x = self.local_x
@@ -197,6 +212,10 @@ class OffboardControlNode(Node):
         current_position_msg.pose.position.z = self.local_z
         current_position_msg.header.stamp = self.get_clock().now().to_msg()
         self.current_position_pub.publish(current_position_msg)
+
+        current_yaw_msg = Float32()
+        current_yaw_msg.data = math.degrees(self.current_yaw)
+        self.current_yaw_pub.publish(current_yaw_msg)
 
     #velocity
     def target_velocity_callback(self, msg: TwistStamped):
@@ -244,6 +263,7 @@ class OffboardControlNode(Node):
         set_point_msg = TrajectorySetpoint()
         set_point_msg.position = [self.target_x, self.target_y, self.target_z]
         set_point_msg.velocity = [self.target_vx, self.target_vy, self.target_vz]
+        set_point_msg.yaw = math.radians(self.target_yaw)
         set_point_msg.timestamp = self.get_clock().now().nanoseconds // 1000
         self.target_position_pub.publish(set_point_msg)
 
@@ -268,6 +288,9 @@ class OffboardControlNode(Node):
     def vehicle_status_callback(self, msg: VehicleStatus):
         self.vehicle_nav_state = msg.nav_state
         self.vehicle_arming_state = msg.arming_state
+
+    def target_yaw_callback(self, msg: Float32):
+        self.target_yaw = msg.data
 
 
     def arm(self):

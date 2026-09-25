@@ -3,8 +3,8 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
-from geometry_msgs.msg import PoseStamped, TwistStamped
-from std_msgs.msg import Bool
+from geometry_msgs.msg import PoseStamped, TwistStamped, PointStamped
+from std_msgs.msg import Bool, Float32
 from nav_msgs.msg import Path
 from enum import Enum
 import math
@@ -19,6 +19,12 @@ class MissionState(Enum):
     DONE = 4
 
 ros_qos = 10
+
+marker_qos = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=10
+)
 
 class MissionManagerNode(Node):
     def __init__(self):
@@ -57,6 +63,9 @@ class MissionManagerNode(Node):
         self.target_vy = 0.0
         self.target_vz = 0.0
 
+        self.target_yaw = 90.0
+        self.current_yaw = 0.0
+
         self.time_start_hover = 0.0
         self.current_time = 0.0
 
@@ -94,6 +103,12 @@ class MissionManagerNode(Node):
         self.target_velocity_pub = self.create_publisher(TwistStamped,
                                                         '/mission/target_velocity',
                                                         ros_qos)
+
+        #yaw
+        self.target_yaw_pub = self.create_publisher(Float32,
+                                                    '/mission/target_yaw',
+                                                    ros_qos)
+        
         #vehicle status
         self.land_pub = self.create_publisher(Bool,
                                             '/mission/land',
@@ -128,6 +143,16 @@ class MissionManagerNode(Node):
                                                             self.current_velocity_callback,
                                                             ros_qos)
 
+        self.target_position_sub = self.create_subscription(PointStamped,
+                                                            '/marker_rel',
+                                                            self.target_position_callback,
+                                                            marker_qos)
+
+        self.current_yaw_sub = self.create_subscription(Float32,
+                                                        '/mission/current_yaw',
+                                                        self.current_yaw_callback,
+                                                        ros_qos)
+
     #main
     def timer_callback(self):
         self.publish_health()
@@ -145,6 +170,9 @@ class MissionManagerNode(Node):
 
         self.target_velocity_publisher(self.target_vx, self.target_vy, self.target_vz)
         print(f'target velocity: vx: {self.target_vx}, vy: {self.target_vy}, vz: {self.target_vz}')
+
+        print(f'target yaw: vx: {self.target_yaw}')
+        print(f'current yaw: vx: {self.current_yaw}')
             
 
         if self.state == MissionState.WAIT_FOR_POSITION:
@@ -225,11 +253,15 @@ class MissionManagerNode(Node):
                 self.target_y = wy
                 self.target_z = wz
 
+                self.target_yaw_publisher(self.target_yaw)
+
                 self.original_wz = wz          # lưu lại độ cao gốc để lên lại sau
                 self.ramp_speed = 0.0
-                self.altitude_seq = 1          # bắt đầu chuỗi hạ độ cao
 
-                self.mission_at_waypoint()
+                if self.current_yaw >= 0.9 * self.target_yaw:
+                    print(f'\033[48;2;128;0;128m yaw = {self.target_yaw} \033[0m') 
+                    self.altitude_seq = 1          # bắt đầu chuỗi hạ độ cao 
+                    self.mission_at_waypoint()
 
             else:
                 self.target_x = self.current_x
@@ -299,7 +331,7 @@ class MissionManagerNode(Node):
                 self.ramp_speed = 0.0
                 self.time_start_hover = 0.0
                 self.altitude_seq = 2
-                print('\033[38;5;42m Đã tới 1m, bắt đầu hover \033[0m')
+                print(f'\033[38;5;42m Đã tới {abs(self.descend_altitude)}m, bắt đầu hover \033[0m')
             else:
                 self.target_x = self.current_x
                 self.target_y = self.current_y
@@ -308,7 +340,7 @@ class MissionManagerNode(Node):
                 self.target_vx = 0.0
                 self.target_vy = 0.0
                 self.target_vz = self.ramp_speed * dz / dist
-                print('\033[38;2;128;0;128m Đang hạ độ cao xuống 1m... \033[0m')
+                print(f'\033[38;2;128;0;128m Đang hạ độ cao xuống {abs(self.descend_altitude)}m... \033[0m')
 
         # --- Bước 2: hover 5s tại 1m ---
         elif self.altitude_seq == 2:
@@ -321,6 +353,7 @@ class MissionManagerNode(Node):
                 self.servo_trigger_publisher(True)
                 self.servo_trigger_requested = True
 
+            if self.servo_trigger_requested:
                 self.hover()
 
         # --- Bước 3: lên lại độ cao gốc của waypoint ---
@@ -370,6 +403,11 @@ class MissionManagerNode(Node):
         target_velocity_msg.twist.linear.z = vz
         target_velocity_msg.header.stamp = self.get_clock().now().to_msg()
         self.target_velocity_pub.publish(target_velocity_msg)
+
+    def target_yaw_publisher(self, yaw):
+        target_yaw_msg = Float32()
+        target_yaw_msg.data = yaw
+        self.target_yaw_pub.publish(target_yaw_msg)
 
     def land_publisher(self, landing_state: Bool):
         land_msg = Bool()
@@ -438,12 +476,17 @@ class MissionManagerNode(Node):
         self.current_y = msg.pose.position.y
         self.current_z = msg.pose.position.z
         self.current_position_received = True
-        
 
     def current_velocity_callback(self, msg: TwistStamped):
         self.current_vx = msg.twist.linear.x
         self.current_vy = msg.twist.linear.y
         self.current_vz = msg.twist.linear.z
+
+    def current_yaw_callback(self, msg: Float32):
+        self.current_yaw = msg.data
+
+    def target_position_callback(self, msg: PointStamped):
+        self.descend_altitude = -msg.point.z
         
 
 def main(args = None):
