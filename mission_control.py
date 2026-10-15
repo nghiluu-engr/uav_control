@@ -99,6 +99,10 @@ class MissionManagerNode(Node):
         self.target_position_pub = self.create_publisher(PoseStamped,
                                                     '/mission/target_position',
                                                     ros_qos)
+        self.waypoint_pub = self.create_publisher(Float32,
+                                            '/mission/waypoint',
+                                            ros_qos)
+        
         #velocity
         self.target_velocity_pub = self.create_publisher(TwistStamped,
                                                         '/mission/target_velocity',
@@ -246,7 +250,7 @@ class MissionManagerNode(Node):
             dz = wz - self.current_z
             dist = math.sqrt(dx**2 + dy**2 + dz**2)
    
-            if math.isclose(dist, 0.0, abs_tol=0.7):
+            if math.isclose(dist, 0.0, abs_tol=0.5):
                 print(f'\033[92m WAYPOINT {self.waypoint_counter + 1} ARRIVED\033[0m')
 
                 self.target_x = wx
@@ -435,6 +439,10 @@ class MissionManagerNode(Node):
         self.drone_path.header.stamp = position_visualize_msg.header.stamp
         self.drone_path.poses.append(position_visualize_msg)
         self.position_visualize_pub.publish(self.drone_path)
+
+    def waypoint_publisher(self):
+        waypoint_msg = Float32()
+        waypoint_msg.data = self.waypoint
 
     #diagnostics
     def publish_health(self):
