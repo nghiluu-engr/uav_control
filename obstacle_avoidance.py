@@ -60,6 +60,12 @@ class ObstacleAvoidanceNode(Node):
         self.safe_y = 0.0
         self.safe_z = 0.0
 
+        self.effective_x = 0.0
+        self.effective_y = 0.0
+        self.effective_z = 0.0        
+
+        self.effective_waypoint_detected = False
+
         #flag
         self.obstacle_detected = False
 
@@ -71,6 +77,10 @@ class ObstacleAvoidanceNode(Node):
         self.safe_waypoint_pub = self.create_publisher(PoseStamped,
                                                        '/mission/safe_waypoint',
                                                        ros_qos)
+
+        self.effective_waypoint_pub = self.create_publisher(PoseStamped,
+                                                            '/mission/effective_waypoint',
+                                                            ros_qos)
 
         #sub
         self.lidar_data_sub = self.create_subscription(LaserScan,
@@ -102,17 +112,24 @@ class ObstacleAvoidanceNode(Node):
         points_north, points_east = self.scan_to_ned()
         self.detect_obstacle(points_north, points_east)
 
+
         if self.obstacle_detected:
             print('obstacle detected...........')
             self.find_safe_waypoint()
             print('safe waypoint found......')
-
         else:
             self.safe_x = self.goal_north
             self.safe_y = self.goal_east
 
-        self.safe_waypoint_publisher()
-        print(f'safe waypoint: x: {self.safe_x}, y: {self.safe_y}')
+
+        if self.effective_waypoint_detected:
+            self.effective_x = self.safe_x
+            self.effective_y = self.safe_y
+            self.effective_waypoint_publisher()
+            print(f'effective waypoint: x: {self.effective_x}, y: {self.effective_y}')
+        else:
+            self.safe_waypoint_publisher()
+            print(f'safe waypoint: x: {self.safe_x}, y: {self.safe_y}')
 
 
 #sub
@@ -206,8 +223,10 @@ class ObstacleAvoidanceNode(Node):
 
             if goal_to_obstacle <= normal_safety_radius:
                 safety_radius = min_safety_radius
+                self.effective_waypoint_detected = True
             else: 
                 safety_radius = normal_safety_radius
+                self.effective_waypoint_detected = False
 
             half_avoidance_angle = math.asin(min(safety_radius/ drone_to_obstacle, 1.0))
 
@@ -225,6 +244,7 @@ class ObstacleAvoidanceNode(Node):
         self.obstacle_detected = any(self.blocked_sectors)
 
         return self.obstacle_detected
+
 
     def find_valleys(self):
         free_sectors = [not blocked for blocked in self.blocked_sectors]
@@ -250,6 +270,7 @@ class ObstacleAvoidanceNode(Node):
                 i += 1
 
         return valleys
+
 
     def find_candidate_directions(self):
         narrow_valley_width = 8
@@ -293,6 +314,16 @@ class ObstacleAvoidanceNode(Node):
     def choose_safe_angle(self):
         goal_bearing = math.atan2(self.goal_east - self.current_east, self.goal_north - self.current_north) % (2 * math.pi)
 
+        if self.number_of_sectors == 0 or not self.blocked_sectors:
+            return goal_bearing
+
+        # Kiểm tra hướng trực tiếp đến waypoint
+        goal_sector = int(goal_bearing / self.sector_width) % self.number_of_sectors
+
+        # Nếu hướng đến waypoint an toàn thì bay thẳng
+        if not self.blocked_sectors[goal_sector]:
+            return goal_bearing
+
         candidates = self.find_candidate_directions()
 
         if not candidates:
@@ -302,6 +333,7 @@ class ObstacleAvoidanceNode(Node):
             return abs(math.atan2(math.sin(a - b), math.cos(a - b)))
 
         return min(candidates, key=lambda angle: angle_diff(angle, goal_bearing))
+
 
     def find_safe_waypoint(self):
         goal_distance = math.sqrt((self.goal_north - self.current_north) * (self.goal_north - self.current_north) 
@@ -337,6 +369,14 @@ class ObstacleAvoidanceNode(Node):
         safe_waypoint_msg.pose.position.z = self.safe_z
         safe_waypoint_msg.header.stamp = self.get_clock().now().to_msg()
         self.safe_waypoint_pub.publish(safe_waypoint_msg)
+
+    def effective_waypoint_publisher(self):
+        effective_waypoint_msg = PoseStamped()
+        effective_waypoint_msg.pose.position.x = self.effective_x
+        effective_waypoint_msg.pose.position.y = self.effective_y
+        effective_waypoint_msg.pose.position.z = self.effective_z
+        effective_waypoint_msg.header.stamp = self.get_clock().now().to_msg()
+        self.effective_waypoint_pub.publish(effective_waypoint_msg)
 
 
 def main(args = None):

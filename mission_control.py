@@ -94,7 +94,10 @@ class MissionManagerNode(Node):
 
         self.servo_trigger_requested = False
 
-        self.effective_goal = False
+        self.effective_waypoint_received = False
+        self.effective_x = 0.0
+        self.effective_y = 0.0
+        self.effective_z = 0.0 
 
         #timer
         self.timer = self.create_timer(0.1, self.timer_callback)
@@ -170,6 +173,10 @@ class MissionManagerNode(Node):
                                                           self.safe_waypoint_callback,
                                                           ros_qos)
 
+        self.effective_waypoint_sub = self.create_subscription(PoseStamped,
+                                                               '/mission/effective_waypoint',
+                                                               self.effective_waypoint_callback,
+                                                               ros_qos)
 
     #main
     def timer_callback(self):
@@ -261,22 +268,22 @@ class MissionManagerNode(Node):
 
             self.waypoint_publisher(wx, wy, wz)
 
-            if self.effective_goal:
-                dx = self.safe_x - self.current_x
-                dy = self.safe_y - self.current_y
-            else:
-                dx = wx - self.current_x
-                dy = wy - self.current_y
-
+            dx = wx - self.current_x
+            dy = wy - self.current_y
             dz = wz - self.current_z
             dist = math.sqrt(dx**2 + dy**2 + dz**2)
    
 
-            if math.isclose(dist, 0.0, abs_tol=0.3):
+            if math.isclose(dist, 0.0, abs_tol=0.3) or self.effective_waypoint_received:
                 print(f'\033[92m WAYPOINT {self.waypoint_counter + 1} ARRIVED\033[0m')
 
-                self.target_x = wx
-                self.target_y = wy
+                if math.isclose(dist, 0.0, abs_tol=0.3):
+                    self.target_x = wx
+                    self.target_y = wy
+                elif self.effective_waypoint_received:
+                    self.target_x = self.effective_x
+                    self.target_y = self.effective_y
+
                 self.target_z = wz
 
                 self.target_yaw_publisher(self.target_yaw)
@@ -348,7 +355,7 @@ class MissionManagerNode(Node):
                 self.time_start_hover = 0.0   
                 self.ramp_speed = 0.0
                 self.altitude_seq = 3    
-                self.ready_to_rtl = True        
+                self.ready_to_rtl = True       
                 
 
     def velocity_control(self):
@@ -430,6 +437,7 @@ class MissionManagerNode(Node):
                 self.ramp_speed = 0.0
                 self.waypoint_counter += 1   # xong hẳn chuỗi, mới sang waypoint kế
                 self.altitude_seq = 0
+                self.effective_waypoint_received = False 
                 print(f'\033[92m Đã lên lại độ cao gốc, chuyển waypoint tiếp theo \033[0m')
             else:
                 self.target_x = self.current_x
@@ -555,6 +563,11 @@ class MissionManagerNode(Node):
         self.safe_x = msg.pose.position.x
         self.safe_y = msg.pose.position.y
         self.safe_waypoint_received = True
+
+    def effective_waypoint_callback(self, msg: PoseStamped):
+        self.effective_x = msg.pose.position.x
+        self.effective_y = msg.pose.position.y
+        self.effective_waypoint_received = True
 
 
 def main(args = None):
