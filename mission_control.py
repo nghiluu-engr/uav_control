@@ -51,6 +51,10 @@ class MissionManagerNode(Node):
         self.target_y = 0.0
         self.target_z = 0.0
 
+        self.safe_x = 0.0
+        self.safe_y = 0.0
+        self.safe_waypoint_received = False
+
         self.distance_x = 0.0
         self.distance_y = 0.0
         self.distance_z = 0.0
@@ -90,6 +94,8 @@ class MissionManagerNode(Node):
 
         self.servo_trigger_requested = False
 
+        self.effective_goal = False
+
         #timer
         self.timer = self.create_timer(0.1, self.timer_callback)
 
@@ -99,9 +105,10 @@ class MissionManagerNode(Node):
         self.target_position_pub = self.create_publisher(PoseStamped,
                                                     '/mission/target_position',
                                                     ros_qos)
-        self.waypoint_pub = self.create_publisher(Float32,
-                                            '/mission/waypoint',
-                                            ros_qos)
+        
+        self.waypoint_pub = self.create_publisher(PoseStamped,
+                                                  '/mission/waypoint',
+                                                  ros_qos)
         
         #velocity
         self.target_velocity_pub = self.create_publisher(TwistStamped,
@@ -136,7 +143,8 @@ class MissionManagerNode(Node):
                                                      '/diagnostics',
                                                      ros_qos)
 
-        #sub
+
+    #sub
         self.current_position_sub = self.create_subscription(PoseStamped,
                                                             '/mission/current_position',
                                                             self.current_position_callback,
@@ -156,6 +164,12 @@ class MissionManagerNode(Node):
                                                         '/mission/current_yaw',
                                                         self.current_yaw_callback,
                                                         ros_qos)
+
+        self.safe_waypoint_sub = self.create_subscription(PoseStamped,
+                                                          '/mission/safe_waypoint',
+                                                          self.safe_waypoint_callback,
+                                                          ros_qos)
+
 
     #main
     def timer_callback(self):
@@ -245,12 +259,20 @@ class MissionManagerNode(Node):
             wy = self.waypoint[3 * self.waypoint_counter + 1]
             wz = self.waypoint[3 * self.waypoint_counter + 2]
 
-            dx = wx - self.current_x
-            dy = wy - self.current_y
+            self.waypoint_publisher(wx, wy, wz)
+
+            if self.effective_goal:
+                dx = self.safe_x - self.current_x
+                dy = self.safe_y - self.current_y
+            else:
+                dx = wx - self.current_x
+                dy = wy - self.current_y
+
             dz = wz - self.current_z
             dist = math.sqrt(dx**2 + dy**2 + dz**2)
    
-            if math.isclose(dist, 0.0, abs_tol=0.5):
+
+            if math.isclose(dist, 0.0, abs_tol=0.3):
                 print(f'\033[92m WAYPOINT {self.waypoint_counter + 1} ARRIVED\033[0m')
 
                 self.target_x = wx
@@ -272,13 +294,42 @@ class MissionManagerNode(Node):
                 self.target_y = self.current_y
                 self.target_z = self.current_z
 
-                dt = 0.1
-                desired_speed = self.max_speed if dist > 2.0 else self.max_speed / 2
-                self.ramp_speed = min(desired_speed, self.ramp_speed + self.max_accel * dt)
+                # Follow the safe waypoint instead of the original
+                # waypoint when an avoidance target is available.
+                if self.safe_waypoint_received:
+                    nav_x = self.safe_x
+                    nav_y = self.safe_y
+                else:
+                    nav_x = wx
+                    nav_y = wy
 
-                self.target_vx = self.ramp_speed * dx / dist
-                self.target_vy = self.ramp_speed * dy / dist
-                self.target_vz = self.ramp_speed * dz / dist
+                # Direction toward the navigation target.
+                dx = nav_x - self.current_x
+                dy = nav_y - self.current_y
+
+                # Keep the original mission altitude.
+                dz = wz - self.current_z
+
+                dist = math.sqrt(dx**2 + dy**2 + dz**2)
+
+                if dist <= 1e-3:
+                    self.target_vx = 0.0
+                    self.target_vy = 0.0
+                    self.target_vz = 0.0
+                else:
+                    dt = 0.1
+                    desired_speed = (
+                        self.max_speed if dist > 2.0
+                        else self.max_speed / 2
+                    )
+                    self.ramp_speed = min(
+                        desired_speed,
+                        self.ramp_speed + self.max_accel * dt
+                    )
+
+                    self.target_vx = self.ramp_speed * dx / dist
+                    self.target_vy = self.ramp_speed * dy / dist
+                    self.target_vz = self.ramp_speed * dz / dist
 
 
     def hover(self):
@@ -440,9 +491,13 @@ class MissionManagerNode(Node):
         self.drone_path.poses.append(position_visualize_msg)
         self.position_visualize_pub.publish(self.drone_path)
 
-    def waypoint_publisher(self):
-        waypoint_msg = Float32()
-        waypoint_msg.data = self.waypoint
+    def waypoint_publisher(self, x, y, z):
+        waypoint_msg = PoseStamped()
+        waypoint_msg.pose.position.x = x
+        waypoint_msg.pose.position.y = y
+        waypoint_msg.pose.position.z = z
+        waypoint_msg.header.stamp = self.get_clock().now().to_msg()
+        self.waypoint_pub.publish(waypoint_msg)
 
     #diagnostics
     def publish_health(self):
@@ -495,7 +550,12 @@ class MissionManagerNode(Node):
 
     def target_position_callback(self, msg: PointStamped):
         self.descend_altitude = -msg.point.z
-        
+
+    def safe_waypoint_callback(self, msg: PoseStamped):
+        self.safe_x = msg.pose.position.x
+        self.safe_y = msg.pose.position.y
+        self.safe_waypoint_received = True
+
 
 def main(args = None):
     rclpy.init(args = args)

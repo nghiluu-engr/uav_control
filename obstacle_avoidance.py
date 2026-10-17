@@ -6,6 +6,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 from sensor_msgs.msg import LaserScan
 from px4_msgs.msg import VehicleAttitude
 from geometry_msgs.msg import PoseStamped
+from std_msgs.msg import Bool
 import math
 import numpy as np
 
@@ -46,8 +47,11 @@ class ObstacleAvoidanceNode(Node):
 
         self.blocked_sectors = []
 
+        self.goal_waypoint = []
+        self.goal_waypoint_counter = 0
         self.goal_north = 0.0
         self.goal_east = 0.0
+
         self.current_north = 0.0
         self.current_east = 0.0
         self.goal_bearing = 0.0
@@ -60,7 +64,8 @@ class ObstacleAvoidanceNode(Node):
         self.obstacle_detected = False
 
         #timer
-        self.timer = self.create_timer(0.2, self.timer_callback)
+
+        self.timer = self.create_timer(0.1, self.timer_callback)
 
         #pub
         self.safe_waypoint_pub = self.create_publisher(PoseStamped,
@@ -69,7 +74,7 @@ class ObstacleAvoidanceNode(Node):
 
         #sub
         self.lidar_data_sub = self.create_subscription(LaserScan,
-                                                         '/scan',
+                                                         '/world/default/model/x500_lidar_2d_0/link/link/sensor/lidar_2d_v2/scan',
                                                          self.lidar_data_callback,
                                                          lidar_qos)
 
@@ -83,20 +88,19 @@ class ObstacleAvoidanceNode(Node):
                                                             self.current_position_callback,
                                                             ros_qos)
 
-        self.target_position_sub = self.create_subscription(PoseStamped,
-                                                            '/mission/target_position',
-                                                            self.target_position_callback,
+        self.goal_waypoint_sub = self.create_subscription(PoseStamped,
+                                                            '/mission/waypoint',
+                                                            self.goal_waypoint_callback,
                                                             ros_qos)
 #main
     def timer_callback(self):
+        if len(self.Quaternion_frd_to_ned) != 4:
+            return
+
         self.lidar_data_filter()
 
         points_north, points_east = self.scan_to_ned()
         self.detect_obstacle(points_north, points_east)
-
-        if self.detect_obstacle(points_north, points_east) is None:
-            self.safe_x = self.current_north
-            self.safe_y = self.current_east
 
         if self.obstacle_detected:
             print('obstacle detected...........')
@@ -182,22 +186,33 @@ class ObstacleAvoidanceNode(Node):
 
     def detect_obstacle(self, points_north, points_east):
         self.number_of_sectors = int(2 * math.pi / self.sector_width) 
-        safety_radius = self.drone_radius + self.safety_margin
+
         self.blocked_sectors = [False] * self.number_of_sectors
+
+        normal_safety_radius = self.drone_radius + self.safety_margin
+        min_safety_radius = self.safety_margin
 
         for north, east in zip(points_north, points_east):
             drone_to_obstacle = math.sqrt(north * north + east * east)
 
+            obstacle_north = self.current_north + north
+            obstacle_east = self.current_east + east
+
+            goal_to_obstacle = math.sqrt((self.goal_north - obstacle_north) ** 2 + (self.goal_east - obstacle_east) ** 2)
+
+
             if drone_to_obstacle < 1e-3 or drone_to_obstacle > self.block_distance:
                 continue
 
-            if drone_to_obstacle <= safety_radius:
-                return 
+            if goal_to_obstacle <= normal_safety_radius:
+                safety_radius = min_safety_radius
+            else: 
+                safety_radius = normal_safety_radius
+
+            half_avoidance_angle = math.asin(min(safety_radius/ drone_to_obstacle, 1.0))
 
             # north = 0 rad
             obstacle_bearing = math.atan2(east, north)
-
-            half_avoidance_angle = math.asin(min(safety_radius / drone_to_obstacle, 1.0))
 
             # find avoidance range
             first_avoidance_sector = int((obstacle_bearing - half_avoidance_angle) // self.sector_width)
@@ -277,16 +292,16 @@ class ObstacleAvoidanceNode(Node):
 
     def choose_safe_angle(self):
         goal_bearing = math.atan2(self.goal_east - self.current_east, self.goal_north - self.current_north) % (2 * math.pi)
-        candidate_directions = self.find_candidate_directions()
 
-        safe_angle = float('inf')
-        i = 0
-        for i in range(len(candidate_directions)):
-            if abs(goal_bearing - candidate_directions[i]) < safe_angle:
-                safe_angle = candidate_directions[i]
-                i += 1
+        candidates = self.find_candidate_directions()
 
-        return safe_angle
+        if not candidates:
+            return None
+
+        def angle_diff(a, b):
+            return abs(math.atan2(math.sin(a - b), math.cos(a - b)))
+
+        return min(candidates, key=lambda angle: angle_diff(angle, goal_bearing))
 
     def find_safe_waypoint(self):
         goal_distance = math.sqrt((self.goal_north - self.current_north) * (self.goal_north - self.current_north) 
@@ -303,17 +318,16 @@ class ObstacleAvoidanceNode(Node):
         self.safe_x = self.current_north + safe_distance * math.cos(safe_angle)
         self.safe_y = self.current_east + safe_distance * math.sin(safe_angle)
 
-
-#timing
 #health check
-#sub
-    def target_position_callback(self, msg: PoseStamped):
-        self.goal_north = msg.pose.position.x
-        self.goal_east = msg.pose.position.y
 
+#sub
     def current_position_callback(self, msg: PoseStamped):
         self.current_north = msg.pose.position.x
         self.current_east = msg.pose.position.y
+
+    def goal_waypoint_callback(self, msg: PoseStamped):
+        self.goal_north = msg.pose.position.x
+        self.goal_east = msg.pose.position.y
 
 #pub
     def safe_waypoint_publisher(self):
